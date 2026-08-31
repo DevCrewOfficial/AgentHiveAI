@@ -1,4 +1,4 @@
-"""In-memory HITL approval repository for the hackathon deployment."""
+"""HITL approval repository with optional Supabase persistence."""
 
 from datetime import datetime
 from hashlib import sha256
@@ -6,10 +6,29 @@ from threading import RLock
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from supabase_client import supabase
+
 
 IST = ZoneInfo("Asia/Kolkata")
-_APPROVALS = {}
 _LOCK = RLock()
+
+
+def _load_approvals_from_supabase():
+    if not supabase:
+        return {}
+    try:
+        response = supabase.table("approvals").select("*").execute()
+        approvals = {}
+        for row in response.data or []:
+            approval_id = str(row.get("id") or row.get("approval_id") or "")
+            if approval_id:
+                approvals[approval_id] = dict(row)
+        return approvals
+    except Exception:
+        return {}
+
+
+_APPROVALS = _load_approvals_from_supabase()
 
 
 def _now():
@@ -20,11 +39,28 @@ def _key(shipment_id, action, request):
     return sha256(f"{shipment_id}|{action}|{request}".encode()).hexdigest()
 
 
+def _persist_approval(approval):
+    if not supabase:
+        return approval
+    try:
+        payload = dict(approval)
+        payload["created_at"] = payload.get("created_at") or _now()
+        payload["reviewed_at"] = payload.get("reviewed_at")
+        payload["reviewed_by"] = payload.get("reviewed_by")
+        payload["human_comment"] = payload.get("human_comment")
+        payload["execution_result"] = payload.get("execution_result")
+        payload["shipment_value"] = float(payload.get("shipment_value") or 0)
+        supabase.table("approvals").upsert(payload, on_conflict="id").execute()
+    except Exception:
+        pass
+    return approval
+
+
 def create_or_get(shipment, request, action, action_args, risk):
     key = _key(shipment["shipment_id"], action, request)
     with _LOCK:
         for approval in _APPROVALS.values():
-            if approval["dedupe_key"] == key:
+            if approval.get("dedupe_key") == key:
                 return approval
         approval = {
             "id": f"APR-{uuid4().hex[:10].upper()}",
@@ -46,6 +82,7 @@ def create_or_get(shipment, request, action, action_args, risk):
             "dedupe_key": key,
         }
         _APPROVALS[approval["id"]] = approval
+        _persist_approval(approval)
         return approval
 
 
@@ -68,6 +105,7 @@ def approve(approval_id, reviewer):
         approval["status"] = "APPROVED"
         approval["reviewed_at"] = _now()
         approval["reviewed_by"] = reviewer or "operations-agent"
+        _persist_approval(approval)
         return approval
 
 
@@ -85,6 +123,7 @@ def reject(approval_id, reviewer, comment):
         approval["reviewed_by"] = reviewer or "operations-agent"
         approval["human_comment"] = comment
         approval["execution_result"] = {"success": False, "blocked": True, "message": "Dangerous action was not executed."}
+        _persist_approval(approval)
         return approval
 
 
@@ -92,6 +131,7 @@ def record_execution(approval_id, result):
     with _LOCK:
         approval = _APPROVALS[approval_id]
         approval["execution_result"] = result
+        _persist_approval(approval)
         return approval
 
 

@@ -14,7 +14,9 @@ class HitlTests(unittest.TestCase):
     def setUp(self):
         approvals._APPROVALS.clear()
         mock_sys.SHIPMENTS["SHIP001"]["value"] = 2000
+        mock_sys.SHIPMENTS["SHIP001"]["order_date"] = "2026-08-10"
         mock_sys.SHIPMENTS["SHIP002"]["value"] = 85000
+        mock_sys.SHIPMENTS["SHIP002"]["order_date"] = "2026-08-12"
         mock_sys.SHIPMENTS["SHIP002"].pop("replacement_id", None)
 
     def test_low_value_replacement_is_automatic(self):
@@ -71,9 +73,9 @@ class HitlTests(unittest.TestCase):
         self.assertTrue("again" in answer or "sent" in answer)
 
     def test_price_and_order_date_must_match_database(self):
-        verified = run_agent("SHIP001 damaged package, replace it", order_value=2000, order_date="2026-08-01")
+        verified = run_agent("SHIP001 damaged package, replace it", order_value=2000, order_date="2026-08-10")
         self.assertNotIn("verification", verified)
-        invalid = run_agent("SHIP001 damaged package, replace it", order_value=999, order_date="2026-08-01")
+        invalid = run_agent("SHIP001 damaged package, replace it", order_value=999, order_date="2026-08-10")
         self.assertFalse(invalid["verification"]["verified"])
         self.assertNotIn("initiate_replacement", [step["tool"] for step in invalid["trail"]])
 

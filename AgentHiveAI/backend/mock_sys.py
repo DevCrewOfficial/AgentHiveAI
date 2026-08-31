@@ -1,13 +1,63 @@
-"""Deterministic in-memory shipment system for the support demo."""
+"""Deterministic shipment system with a Supabase-backed data source and optional demo fallback."""
 
+import os
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from supabase_client import supabase
+
 
 IST = ZoneInfo("Asia/Kolkata")
 DEMO_TODAY = date(2026, 8, 29)
+
+
+def _normalize_supabase_row(row):
+	if not row:
+		return {}
+	shipment_id = str(row.get("shipment_id") or row.get("id") or "").strip().upper()
+	eta = row.get("eta") or row.get("estimated_delivery") or "2026-09-03"
+	estimated_delivery = row.get("estimated_delivery") or eta
+	return {
+		"shipment_id": shipment_id,
+		"order_id": row.get("order_id") or f"ORD-{shipment_id}",
+		"customer_id": row.get("customer_id") or f"CUST-{shipment_id}",
+		"order_date": row.get("order_date") or "2026-08-29",
+		"customer": row.get("customer") or "Guest Customer",
+		"product": row.get("product") or "Shipment",
+		"status": row.get("status") or "In transit",
+		"issue": row.get("issue"),
+		"location": row.get("location") or "Unknown location",
+		"carrier": row.get("carrier") or "Carrier",
+		"eta": eta,
+		"estimated_delivery": estimated_delivery,
+		"address": row.get("address") or "Address unavailable",
+		"value": float(row.get("value") or 0),
+		"damage_status": row.get("damage_status") or "none",
+		"required_document": row.get("required_document") or "Commercial invoice",
+		"events": row.get("events") or [{"timestamp": datetime.now(IST).isoformat(timespec="seconds"), "event": "Shipment created"}],
+		"actions": row.get("actions") or [],
+	}
+
+
+def _load_shipments_from_supabase():
+	if not supabase:
+		return None
+	try:
+		result = supabase.table("shipments").select("*").execute()
+		rows = result.data or []
+		shipments = {}
+		for row in rows:
+			normalized = _normalize_supabase_row(row)
+			shipment_id = normalized.get("shipment_id")
+			if shipment_id:
+				shipments[shipment_id] = normalized
+		if shipments:
+			return shipments
+	except Exception:
+		return None
+	return None
 
 
 def _display_date(value):
@@ -65,7 +115,15 @@ def _build_shipments():
 	return shipments
 
 
-SHIPMENTS = _build_shipments()
+USE_DEMO_FALLBACK = os.getenv("USE_DEMO_FALLBACK", "false").lower() not in {"0", "false", "no", "off"}
+
+SHIPMENTS = _load_shipments_from_supabase()
+if SHIPMENTS is None:
+	if USE_DEMO_FALLBACK:
+		SHIPMENTS = _build_shipments()
+	else:
+		raise RuntimeError("Supabase shipment data is unavailable and demo fallback is disabled.")
+
 NOTIFICATIONS = []
 OPERATIONS_TICKETS = []
 ISSUE_CASES = []
