@@ -5,23 +5,38 @@ A minimal, hackable agent skeleton so you can plug in your actual problem statem
 ## What's inside
 
 ```
-agent-starter/
-├── agent/
-│   ├── core.py          # The agent loop (plan -> tool call -> observe -> respond)
-│   ├── tools/
-│   │   ├── __init__.py  # Tool registry - add new tools here
-│   │   ├── calculator.py
-│   │   ├── web_search.py
-│   │   ├── http_request.py
-│   │   ├── file_io.py
-│   │   └── rag.py       # Simple local document search (no vector DB needed)
-├── app.py                # Streamlit demo UI
-├── requirements.txt
-├── .env.example
+AgentHiveAI/
+│
+├── AgentHiveAI/
+│   └── backend/
+│       │
+│       ├── agent/
+│       │   ├── tools/
+│       │   │   ├── __init__.py
+│       │   │   └── shipment.py
+│       │   │
+│       │   ├── __init__.py
+│       │   ├── core.py
+│       │   ├── llm.py
+│       │   └── prompt.py
+│       │
+│       ├── tests/
+│       │
+│       ├── agent.py
+│       ├── api.py
+│       ├── app.py
+│       ├── approvals.py
+│       ├── mock_sys.py
+│       ├── requirements.txt
+│       ├── risk_policy.py
+│       ├── supabase_client.py
+│       └── tools.py
+│
+├── .gitignore
 └── README.md
 ```
 
-## Setup (do this tonight)
+## Setup 
 
 ```bash
 python -m venv venv
